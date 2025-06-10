@@ -1,0 +1,16 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ],
+  "compilerOptions": {
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  // "include": [
+  //   "src/**/*.ts",
+  //   "src/**/*.vue",
+  //   "src/axions/**/*.ts" // 显式包含目标目录
+  // ]
+}
