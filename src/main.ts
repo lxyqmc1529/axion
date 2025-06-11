@@ -232,6 +232,65 @@ async function testAxion() {
   console.log('\n📊 Final system status:');
   console.log('Cache stats:', axion.getCacheStats());
   console.log('Queue stats:', axion.getQueueStats());
+
+  // 中间件测试
+  await runTestCase('Middleware system', async () => {
+    const logs: string[] = [];
+    
+    axion.use({
+      name: 'test-middleware',
+      priority: 1,
+      handler: async (context, next) => {
+        logs.push('before request');
+        const result = await next();
+        logs.push('after request');
+        return result;
+      }
+    });
+
+    await axion.get('/posts/12');
+    
+    if (logs.join(',') !== 'before request,after request') {
+      throw new Error('Middleware execution order incorrect');
+    }
+  });
+
+  // 缓存系统高级特性测试
+  await runTestCase('Advanced cache features', async () => {
+    const customKey = 'custom-key';
+    await axion.get('/posts/13', {
+      cache: {
+        enabled: true,
+        keyGenerator: () => customKey
+      }
+    });
+    
+    const stats = axion.getCacheStats();
+    if (!stats.keys.includes(customKey)) {
+      throw new Error('Custom cache key not working');
+    }
+    
+    axion.clearCache();
+    const statsAfterClear = axion.getCacheStats();
+    if (statsAfterClear.size !== 0) {
+      throw new Error('Cache clear failed');
+    }
+  });
+
+  // 完整的HTTP方法测试
+  await runTestCase('All HTTP methods', async () => {
+    const responses = await Promise.all([
+      axion.put('/posts/14', { title: 'Updated' }),
+      axion.delete('/posts/15'),
+      axion.patch('/posts/16', { title: 'Patched' }),
+      axion.head('/posts/17'),
+      axion.options('/posts/18')
+    ]);
+    
+    if (!responses.every(r => r !== undefined)) {
+      throw new Error('Some HTTP methods failed');
+    }
+  });
 }
 
 // 开发环境执行测试
