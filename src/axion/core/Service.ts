@@ -54,8 +54,12 @@ export class Service implements ServiceInstance {
     if (mergedConfig.requestLock) {
       const duplicatePromise = this.requestLockManager.checkDuplicateRequest(mergedConfig);
       if (duplicatePromise) {
-        return duplicatePromise;
+          return duplicatePromise;
       }
+      // 先注册一个新的 Promise
+      return this.requestLockManager.registerRequest(mergedConfig, new Promise((resolve, reject) => {
+        this.processRequest(mergedConfig).then(resolve).catch(reject);
+      }));
     }
 
     // 防抖处理
@@ -141,6 +145,10 @@ export class Service implements ServiceInstance {
     return this.requestQueue.getStats();
   }
 
+  updateQueueConfig(maxConcurrent?: number, maxQueueSize?: number): void {
+    this.requestQueue.updateConfig(maxConcurrent, maxQueueSize);
+  }
+
   // 适配器管理
   setAdapter(adapter: AxiosAdapter | CustomAdapter): void {
     this.axiosInstance.defaults.adapter = adapter as AxiosAdapter;
@@ -157,15 +165,8 @@ export class Service implements ServiceInstance {
     }
 
     // 使用请求队列处理
-    const promise = this.requestQueue.add(config);
-
-    // 注册请求锁
-    if (config.requestLock) {
-      this.requestLockManager.registerRequest(config, promise);
-    }
-
-    return promise;
-  }
+    return this.requestQueue.add(config);
+}
 
   private async executeRequest(config: RequestConfig): Promise<any> {
     const context: MiddlewareContext = {
@@ -236,7 +237,7 @@ export class Service implements ServiceInstance {
   private mergeRequestConfig(config: RequestConfig): RequestConfig & { requestId?: string } {
     return {
       ...config,
-      requestId: config.requestId || generateRequestId(config),
+      requestId: config.requestId,  // 只使用用户提供的 requestId
       retry: config.retry || this.config.defaultRetry,
       cache: config.cache !== undefined ? config.cache : this.config.defaultCache,
       priority: config.priority || this.config.defaultPriority,

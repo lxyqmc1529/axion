@@ -1,6 +1,13 @@
 import { generateRequestId } from '../utils';
 import type { RequestTask, RequestConfig } from '../types/service';
 
+class CanceledError extends Error {
+  constructor(message: string = 'Request cancelled') {
+    super(message);
+    this.name = 'CanceledError';
+  }
+}
+
 export class RequestQueue {
   private queue: RequestTask[] = [];
   private running: Map<string, RequestTask> = new Map();
@@ -38,6 +45,22 @@ export class RequestQueue {
     });
   }
 
+  cancelAll(): void {
+    // 取消队列中的所有请求
+    this.queue.forEach(task => {
+      task.controller.abort();
+      task.reject(new CanceledError());
+    });
+    this.queue = [];
+
+    // 取消正在执行的所有请求
+    this.running.forEach(task => {
+      task.controller.abort();
+      task.reject(new CanceledError());
+    });
+    this.running.clear();
+  }
+
   cancel(requestId: string): boolean {
     // 取消队列中的请求
     const queueIndex = this.queue.findIndex(task => task.id === requestId);
@@ -45,7 +68,7 @@ export class RequestQueue {
       const task = this.queue[queueIndex];
       this.queue.splice(queueIndex, 1);
       task.controller.abort();
-      task.reject(new Error('Request cancelled'));
+      task.reject(new CanceledError());
       return true;
     }
 
@@ -53,29 +76,13 @@ export class RequestQueue {
     const runningTask = this.running.get(requestId);
     if (runningTask) {
       runningTask.controller.abort();
-      runningTask.reject(new Error('Request cancelled'));
+      runningTask.reject(new CanceledError());
       this.running.delete(requestId);
       this.processQueue(); // 处理下一个请求
       return true;
     }
 
     return false;
-  }
-
-  cancelAll(): void {
-    // 取消队列中的所有请求
-    this.queue.forEach(task => {
-      task.controller.abort();
-      task.reject(new Error('Request cancelled'));
-    });
-    this.queue = [];
-
-    // 取消正在执行的所有请求
-    this.running.forEach(task => {
-      task.controller.abort();
-      task.reject(new Error('Request cancelled'));
-    });
-    this.running.clear();
   }
 
   getStats() {
@@ -110,8 +117,21 @@ export class RequestQueue {
   }
 
   private async processQueue(): Promise<void> {
+    if (this.maxConcurrent <= 0) return;
+    
+    // 添加延迟以确保所有请求都有机会进入队列
+    await new Promise(resolve => setTimeout(resolve, 0));
+    
     while (this.running.size < this.maxConcurrent && this.queue.length > 0) {
-      const task = this.queue.shift()!;
+      // 每次都从队列中选择优先级最高的请求
+      let highestPriorityIndex = 0;
+      for (let i = 1; i < this.queue.length; i++) {
+        if (this.queue[i].priority > this.queue[highestPriorityIndex].priority) {
+          highestPriorityIndex = i;
+        }
+      }
+      
+      const task = this.queue.splice(highestPriorityIndex, 1)[0];
       this.running.set(task.id, task);
 
       this.executeTask(task).finally(() => {
