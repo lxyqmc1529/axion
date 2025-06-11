@@ -19,13 +19,14 @@ export const createCacheMiddleware = (cacheManager: CacheManager): MiddlewareFun
     }
 
     const cacheKey = generateCacheKey(context.config);
-
-    // 尝试从缓存获取数据
     const cachedData = await cacheManager.get(cacheKey);
+    
     if (cachedData) {
       context.fromCache = true;
+      console.debug('[Axion Cache] 缓存命中：', cacheKey);
       return cachedData;
     }
+    console.debug('[Axion Cache] 缓存未命中：', cacheKey);
 
     // 执行请求
     const result = await next();
@@ -45,11 +46,15 @@ function generateCacheKey(config: any): string {
 
   // 如果有自定义缓存键生成器，使用它
   if (config.cache && typeof config.cache === 'object' && config.cache.keyGenerator) {
-    return config.cache.keyGenerator(config);
+    const key = config.cache.keyGenerator(config);
+    console.debug('[Axion Cache] 使用自定义键生成器生成键：', key);
+    return key;
   }
 
   // 默认键生成逻辑
   const key = `${method.toUpperCase()}:${url}:${JSON.stringify(params)}:${JSON.stringify(data)}`;
-  return base64Encode(key).replace(/[+/=]/g, '');
+  const encodedKey = base64Encode(key).replace(/[+/=]/g, '');
+  console.debug('[Axion Cache] 使用默认键生成器生成键：', encodedKey);
+  return encodedKey;
 }
 

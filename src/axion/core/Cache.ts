@@ -70,6 +70,10 @@ export class MemoryLRUCache<K, V> implements LRUCache<K, V> {
       this.delete(lruKey);
     }
   }
+
+  keys(): K[] {
+    return Array.from(this.cache.keys());
+  }
 }
 
 export class CacheManager {
@@ -168,7 +172,9 @@ export class CacheManager {
   }
 
   getStats(): CacheStats {
-    return { ...this.stats };
+    return { ...this.stats,
+      keys: this.cache.keys(),
+     };
   }
 
   updateConfig(config: Partial<CacheConfig>): void {

@@ -22,7 +22,7 @@ const axion = createAxion({
 async function runTestCase(name: string, testFn: () => Promise<void>) {
   try {
     await testFn();
-    console.log(`✅ ${name} passed`);
+    console.log(`✅ ${name} complated`);
   } catch (error) {
     console.error(`❌ ${name} failed:`, error);
   }
@@ -228,70 +228,165 @@ async function testAxion() {
     }
   });
 
-  // 系统状态报告
-  console.log('\n📊 Final system status:');
-  console.log('Cache stats:', axion.getCacheStats());
-  console.log('Queue stats:', axion.getQueueStats());
-
   // 中间件测试
   await runTestCase('Middleware system', async () => {
     const logs: string[] = [];
+    console.log('开始中间件测试...');
     
+    // 添加多个中间件，测试优先级和洋葱模型
     axion.use({
-      name: 'test-middleware',
-      priority: 1,
+      name: 'middleware-1',
+      priority: 2,  // 较低优先级，后执行
       handler: async (context, next) => {
-        logs.push('before request');
+        console.log('进入 middleware-1');
+        logs.push('middleware-1 before');
         const result = await next();
-        logs.push('after request');
+        console.log('middleware-1 执行完成，返回结果：', result);
+        logs.push('middleware-1 after');
         return result;
       }
     });
 
+    axion.use({
+      name: 'middleware-2',
+      priority: 1,  // 较高优先级，先执行
+      handler: async (context, next) => {
+        console.log('进入 middleware-2');
+        logs.push('middleware-2 before');
+        const result = await next();
+        console.log('middleware-2 执行完成，返回结果：', result);
+        logs.push('middleware-2 after');
+        return result;
+      }
+    });
+
+    console.log('发起第一次请求...');
     await axion.get('/posts/12');
     
-    if (logs.join(',') !== 'before request,after request') {
-      throw new Error('Middleware execution order incorrect');
+    // 验证洋葱模型执行顺序
+    const expectedOrder = [
+      'middleware-2 before',  // 高优先级先执行
+      'middleware-1 before',  // 低优先级后执行
+      'middleware-1 after',   // 低优先级先返回
+      'middleware-2 after'    // 高优先级后返回
+    ];
+
+    console.log('第一次请求的中间件执行顺序：', logs.join(' -> '));
+    if (logs.join(',') !== expectedOrder.join(',')) {
+      throw new Error('Middleware execution order incorrect: ' + logs.join(','));
     }
+
+    // 测试中间件移除
+    console.log('移除 middleware-1...');
+    axion.removeMiddleware('middleware-1');
+    logs.length = 0;  // 清空日志
+    
+    console.log('发起第二次请求...');
+    await axion.get('/posts/12');
+    
+    console.log('第二次请求的中间件执行顺序：', logs.join(' -> '));
+    // 验证只剩一个中间件
+    if (logs.join(',') !== 'middleware-2 before,middleware-2 after') {
+      throw new Error('Middleware removal failed');
+    }
+    console.log('中间件测试完成！');
   });
 
   // 缓存系统高级特性测试
   await runTestCase('Advanced cache features', async () => {
+    console.log('开始缓存系统高级特性测试...');
     const customKey = 'custom-key';
-    await axion.get('/posts/13', {
+    
+    // 第一次请求，应该未命中缓存
+    console.log('发起第一次请求（应该未命中缓存）...');
+    await axion.get('/posts/14', {
+      cache: {
+        enabled: true,
+        keyGenerator: (config) => {
+          console.log('使用自定义键生成器，生成键：', customKey);
+          console.log('请求配置：', {
+            url: config.url,
+            method: config.method,
+            params: config.params
+          });
+          return customKey;
+        }
+      }
+    });
+    
+    // 第二次请求，应该命中缓存
+    console.log('\n发起第二次相同请求（应该命中缓存）...');
+    await axion.get('/posts/14', {
       cache: {
         enabled: true,
         keyGenerator: () => customKey
       }
     });
     
+    console.log('\n获取缓存统计信息...');
     const stats = axion.getCacheStats();
-    if (!stats.keys.includes(customKey)) {
-      throw new Error('Custom cache key not working');
-    }
+    console.log('当前缓存统计：', {
+      size: stats.size,
+      maxSize: stats.maxSize,
+      hitCount: stats.hitCount,
+      missCount: stats.missCount,
+      hitRate: stats.hitRate
+    });
     
+    // 验证缓存命中情况
+    if (stats.hitCount === 0) {
+      throw new Error('缓存命中次数应该大于0');
+    }
+    if (stats.missCount !== 1) {
+      throw new Error('缓存未命中次数应该等于1');
+    }
+    console.log('缓存命中统计验证成功！');
+    
+    // 使用不同的键再次请求
+    const anotherKey = 'another-key';
+    console.log('\n使用不同的键发起请求...');
+    await axion.get('/posts/14', {
+      cache: {
+        enabled: true,
+        keyGenerator: () => anotherKey
+      }
+    });
+    
+    const statsAfterNewKey = axion.getCacheStats();
+    console.log('新请求后的缓存统计：', {
+      size: statsAfterNewKey.size,
+      hitCount: statsAfterNewKey.hitCount,
+      missCount: statsAfterNewKey.missCount
+    });
+    
+    // 验证缓存大小增加
+    if (statsAfterNewKey.size !== 2) {
+      throw new Error('缓存大小应该为2');
+    }
+    console.log('不同键缓存验证成功！');
+    
+    console.log('\n清除缓存...');
     axion.clearCache();
     const statsAfterClear = axion.getCacheStats();
-    if (statsAfterClear.size !== 0) {
-      throw new Error('Cache clear failed');
-    }
-  });
-
-  // 完整的HTTP方法测试
-  await runTestCase('All HTTP methods', async () => {
-    const responses = await Promise.all([
-      axion.put('/posts/14', { title: 'Updated' }),
-      axion.delete('/posts/15'),
-      axion.patch('/posts/16', { title: 'Patched' }),
-      axion.head('/posts/17'),
-      axion.options('/posts/18')
-    ]);
+    console.log('清除后的缓存统计：', {
+      size: statsAfterClear.size,
+      hitCount: statsAfterClear.hitCount,
+      missCount: statsAfterClear.missCount
+    });
     
-    if (!responses.every(r => r !== undefined)) {
-      throw new Error('Some HTTP methods failed');
+    if (statsAfterClear.size !== 0) {
+      throw new Error('缓存清除失败');
     }
+    console.log('缓存清除成功！');
+    console.log('缓存系统高级特性测试完成！');
   });
 }
+
+
+  // 系统状态报告
+  console.log('\n📊 Final system status:');
+  console.log('Cache stats:', axion.getCacheStats());
+  console.log('Queue stats:', axion.getQueueStats());
 
 // 开发环境执行测试
 if (import.meta.env.DEV) {

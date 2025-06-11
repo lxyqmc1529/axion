@@ -40,6 +40,7 @@ export interface CacheStats {
   hitCount: number;
   missCount: number;
   hitRate: number;
+  keys: string[];  // 添加缓存键列表
 }
 
 export interface LRUCache<K, V> {
@@ -50,4 +51,5 @@ export interface LRUCache<K, V> {
   has(key: K): boolean;
   size: number;
   maxSize: number;
+  keys(): K[];
 }
