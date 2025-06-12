@@ -1,5 +1,5 @@
 import { CacheManager } from '../core/Cache';
-import { base64Encode } from '../utils';
+import { generateRequestId } from '../utils';
 import type { MiddlewareFunction, MiddlewareContext, MiddlewareNext } from '../types/middleware';
 
 export const createCacheMiddleware = (cacheManager: CacheManager): MiddlewareFunction => ({
@@ -18,7 +18,7 @@ export const createCacheMiddleware = (cacheManager: CacheManager): MiddlewareFun
       return next();
     }
 
-    const cacheKey = generateCacheKey(context.config);
+    const cacheKey = generateRequestId(context.config);
     const cachedData = await cacheManager.get(cacheKey);
     
     if (cachedData !== null) {
