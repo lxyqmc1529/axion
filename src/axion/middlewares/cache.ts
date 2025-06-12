@@ -1,5 +1,5 @@
 import { CacheManager } from '../core/Cache';
-import { base64Encode } from '../utils';
+import { generateRequestId } from '../utils';
 import type { MiddlewareFunction, MiddlewareContext, MiddlewareNext } from '../types/middleware';
 
 export const createCacheMiddleware = (cacheManager: CacheManager): MiddlewareFunction => ({
@@ -18,7 +18,7 @@ export const createCacheMiddleware = (cacheManager: CacheManager): MiddlewareFun
       return next();
     }
 
-    const cacheKey = generateCacheKey(context.config);
+    const cacheKey = generateRequestId(context.config);
     const cachedData = await cacheManager.get(cacheKey);
     
     if (cachedData) {
@@ -40,21 +40,4 @@ export const createCacheMiddleware = (cacheManager: CacheManager): MiddlewareFun
     return result;
   },
 });
-
-function generateCacheKey(config: any): string {
-  const { method = 'GET', url = '', params = {}, data = {} } = config;
-
-  // 如果有自定义缓存键生成器，使用它
-  if (config.cache && typeof config.cache === 'object' && config.cache.keyGenerator) {
-    const key = config.cache.keyGenerator(config);
-    console.debug('[Axion Cache] 使用自定义键生成器生成键：', key);
-    return key;
-  }
-
-  // 默认键生成逻辑
-  const key = `${method.toUpperCase()}:${url}:${JSON.stringify(params)}:${JSON.stringify(data)}`;
-  const encodedKey = base64Encode(key).replace(/[+/=]/g, '');
-  console.debug('[Axion Cache] 使用默认键生成器生成键：', encodedKey);
-  return encodedKey;
-}
 
