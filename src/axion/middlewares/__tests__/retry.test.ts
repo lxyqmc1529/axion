@@ -43,8 +43,14 @@ describe('Retry Middleware', () => {
       .mockRejectedValueOnce(error)
       .mockResolvedValue('success');
 
-    const result = await middleware.handler(context, next);
-
+    const promise = middleware.handler(context, next);
+    
+    // 等待第一次重试
+    await vi.advanceTimersByTime(1000);
+    // 等待第二次重试
+    await vi.advanceTimersByTime(1000);
+    
+    const result = await promise;
     expect(result).toBe('success');
     expect(next).toHaveBeenCalledTimes(3);
   });
@@ -54,7 +60,14 @@ describe('Retry Middleware', () => {
     const error = new Error('Test error');
     const next = vi.fn().mockRejectedValue(error);
 
-    await expect(middleware.handler(context, next)).rejects.toThrow(error);
+    const promise = middleware.handler(context, next);
+    
+    // 等待所有重试
+    await vi.advanceTimersByTime(1000);
+    await vi.advanceTimersByTime(1000);
+    await vi.advanceTimersByTime(1000);
+    
+    await expect(promise).rejects.toThrow(error);
     expect(next).toHaveBeenCalledTimes(4); // 初始请求 + 3次重试
   });
 
@@ -110,7 +123,14 @@ describe('Retry Middleware', () => {
     const error = new Error('Test error');
     const next = vi.fn().mockRejectedValue(error);
 
-    await expect(middleware.handler(context, next)).rejects.toThrow(error);
+    const promise = middleware.handler(context, next);
+    
+    // 等待所有重试
+    await vi.advanceTimersByTime(1000);
+    await vi.advanceTimersByTime(1000);
+    await vi.advanceTimersByTime(1000);
+    
+    await expect(promise).rejects.toThrow(error);
     expect(onRetry).toHaveBeenCalledTimes(3);
     expect(onRetry).toHaveBeenCalledWith(error, 1);
     expect(onRetry).toHaveBeenCalledWith(error, 2);
@@ -138,8 +158,12 @@ describe('Retry Middleware', () => {
       .mockRejectedValueOnce(networkError)
       .mockResolvedValue('success');
 
-    const result = await middleware.handler(context, next);
-
+    const promise = middleware.handler(context, next);
+    
+    // 等待第一次重试
+    await vi.advanceTimersByTime(1000);
+    
+    const result = await promise;
     expect(result).toBe('success');
     expect(next).toHaveBeenCalledTimes(2);
   });

@@ -26,32 +26,42 @@ export const createRetryMiddleware = (defaultConfig?: Partial<RetryConfig>): Mid
     };
     
     let lastError: any;
-    let result: any;
     
-    for (let attempt = 0; attempt < config.times + 1; attempt++) {
+    // 初始尝试
+    try {
+      context.retryCount = 0;
+      return await next();
+    } catch (error) {
+      lastError = error;
+      if (!config.condition(error)) {
+        throw error;
+      }
+    }
+    
+    // 重试逻辑
+    for (let attempt = 1; attempt <= config.times; attempt++) {
       try {
-        context.retryCount = attempt;
-        result = await next();
-        return result;
-      } catch (error) {
-        lastError = error;
-        
-        // 如果是最后一次尝试或错误不可重试，直接抛出
-        if (attempt === config.times || !config.condition(error)) {
-          throw error;
-        }
-        
-        // 调用重试回调
-        if (config.onRetry) {
-          config.onRetry(error, attempt + 1);
-        }
-        
-        // 计算延迟时间
-        const delay = calculateDelay(config.delay, attempt, config.backoff);
-        
-        // 等待后重试
+        // 计算延迟时间并等待
+        const delay = calculateDelay(config.delay, attempt - 1, config.backoff);
         if (delay > 0) {
           await sleep(delay);
+        }
+
+        // 调用重试回调
+        if (config.onRetry) {
+          config.onRetry(lastError, attempt);
+        }
+
+        context.retryCount = attempt;
+        return await next();
+      } catch (error) {
+        lastError = error;
+        if (!config.condition(error)) {
+          throw error;
+        }
+        // 如果是最后一次重试且失败，抛出错误
+        if (attempt === config.times) {
+          throw error;
         }
       }
     }
@@ -82,14 +92,18 @@ function isRetryableError(error: any): boolean {
 }
 
 function calculateDelay(baseDelay: number, attempt: number, backoff: 'linear' | 'exponential'): number {
+  let delay: number;
   switch (backoff) {
     case 'linear':
-      return baseDelay * (attempt + 1);
+      delay = baseDelay * (attempt + 1);
+      break;
     case 'exponential':
-      return baseDelay * Math.pow(2, attempt);
+      delay = baseDelay * Math.pow(2, attempt);
+      break;
     default:
-      return baseDelay;
+      delay = baseDelay;
   }
+  return Math.min(delay, 30000); // 设置最大延迟时间为30秒
 }
 
 function sleep(ms: number): Promise<void> {

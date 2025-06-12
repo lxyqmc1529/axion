@@ -212,6 +212,21 @@ export class CacheManager {
       this.stats.size = this.cache.size;
     }
 
+    // 如果 TTL 改变，更新所有现有缓存项的 TTL
+    if (config.ttl && config.ttl !== oldConfig.ttl) {
+      const entries = this.cache.entries();
+      for (const [key, item] of entries) {
+        const remainingTime = item.ttl - (Date.now() - item.timestamp);
+        if (remainingTime > 0) {
+          item.ttl = config.ttl;
+          this.cache.set(key, item);
+        } else {
+          this.cache.delete(key);
+        }
+      }
+      this.stats.size = this.cache.size;
+    }
+
     // 如果禁用缓存，清空现有缓存
     if (config.enabled === false) {
       this.cache.clear();

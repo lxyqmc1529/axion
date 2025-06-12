@@ -18,12 +18,10 @@ export const createErrorHandlerMiddleware = (config?: ErrorHandlerConfig): Middl
       if (context.response && typeof context.config.validateError === 'function') {
         const validationResult = context.config.validateError(context.response);
         if (validationResult === true || (validationResult && typeof validationResult === 'object')) {
-          const errorMessage = typeof validationResult === 'object' ? validationResult.message : 'Custom validation failed';
-          const customError = new CustomValidationError(
-            errorMessage,
-            context.response
-          );
-          throw customError;
+          const errorMessage = typeof validationResult === 'object' && validationResult.message
+            ? validationResult.message
+            : 'Custom validation failed';
+          throw new CustomValidationError(errorMessage, context.response);
         }
       }
       
@@ -42,13 +40,15 @@ export const createErrorHandlerMiddleware = (config?: ErrorHandlerConfig): Middl
       }
       
       // 转换错误
-      let transformedError = error;
       if (config?.transformError) {
-        transformedError = config.transformError(error);
+        const transformedError = config.transformError(error);
+        if (transformedError instanceof Error) {
+          throw transformedError;
+        }
       }
       
       // 包装错误以提供更多信息
-      throw wrapError(transformedError, context);
+      throw wrapError(error, context);
     }
   },
 });

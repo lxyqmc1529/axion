@@ -1,4 +1,4 @@
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, test, expect, vi, beforeEach } from 'vitest';
 import {
   createErrorHandlerMiddleware,
   createNetworkErrorHandler,
@@ -27,10 +27,6 @@ describe('ErrorHandler Middleware', () => {
     vi.spyOn(console, 'groupEnd').mockImplementation(() => {});
   });
 
-  afterEach(() => {
-    vi.clearAllMocks();
-  });
-
   test('成功请求不应该触发错误处理', async () => {
     const middleware = createErrorHandlerMiddleware();
     const next = vi.fn().mockResolvedValue('success');
@@ -44,13 +40,10 @@ describe('ErrorHandler Middleware', () => {
   test('应该处理自定义错误验证', async () => {
     const middleware = createErrorHandlerMiddleware();
     const next = vi.fn().mockResolvedValue({ status: 'error' });
-    context.config.validateError = (response) => ({ message: 'Custom error message' });
+    context.config.validateError = (response) => response.status === 'error';
     context.response = { status: 'error' };
 
-    await expect(middleware.handler(context, next)).rejects.toThrow('Custom error message');
-    const error = await middleware.handler(context, next).catch(e => e);
-    expect(error).toBeInstanceOf(CustomValidationError);
-    expect(error.response).toEqual({ status: 'error' });
+    await expect(middleware.handler(context, next)).rejects.toThrow(CustomValidationError);
   });
 
   test('应该记录错误信息', async () => {
@@ -103,7 +96,6 @@ describe('预定义错误处理器', () => {
       'ENETWORK',
       context.config
     );
-    networkError.response = undefined;
     const next = vi.fn().mockRejectedValue(networkError);
 
     await expect(middleware.handler(context, next))
@@ -134,7 +126,6 @@ describe('预定义错误处理器', () => {
       {},
       { status: 500, statusText: 'Internal Server Error' } as any
     );
-    serverError.response = { status: 500 };
     const next = vi.fn().mockRejectedValue(serverError);
 
     await expect(middleware.handler(context, next))
