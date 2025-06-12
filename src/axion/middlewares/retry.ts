@@ -20,23 +20,24 @@ export const createRetryMiddleware = (defaultConfig?: Partial<RetryConfig>): Mid
     const config: RetryConfig = {
       times: retryConfig.times,
       delay: retryConfig.delay ?? defaultConfig?.delay ?? 1000,
-      backoff: defaultConfig?.backoff ?? 'exponential',
+      backoff: retryConfig.backoff ?? defaultConfig?.backoff ?? 'exponential',
       condition: retryConfig.condition ?? defaultConfig?.condition ?? isRetryableError,
-      onRetry: defaultConfig?.onRetry,
+      onRetry: retryConfig.onRetry ?? defaultConfig?.onRetry,
     };
     
     let lastError: any;
+    let result: any;
     
-    for (let attempt = 0; attempt <= config.times; attempt++) {
+    for (let attempt = 0; attempt < config.times + 1; attempt++) {
       try {
         context.retryCount = attempt;
-        const result = await next();
+        result = await next();
         return result;
       } catch (error) {
         lastError = error;
         
         // 如果是最后一次尝试或错误不可重试，直接抛出
-        if (attempt === config.times || !config.condition!(error)) {
+        if (attempt === config.times || !config.condition(error)) {
           throw error;
         }
         
@@ -46,7 +47,7 @@ export const createRetryMiddleware = (defaultConfig?: Partial<RetryConfig>): Mid
         }
         
         // 计算延迟时间
-        const delay = calculateDelay(config.delay!, attempt, config.backoff!);
+        const delay = calculateDelay(config.delay, attempt, config.backoff);
         
         // 等待后重试
         if (delay > 0) {

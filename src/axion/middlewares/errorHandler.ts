@@ -15,11 +15,12 @@ export const createErrorHandlerMiddleware = (config?: ErrorHandlerConfig): Middl
       const result = await next();
       
       // 检查自定义错误验证
-      if (context.response && context.config.validateError) {
-        const isError = context.config.validateError(context.response);
-        if (isError) {
+      if (context.response && typeof context.config.validateError === 'function') {
+        const validationResult = context.config.validateError(context.response);
+        if (validationResult === true || (validationResult && typeof validationResult === 'object')) {
+          const errorMessage = typeof validationResult === 'object' ? validationResult.message : 'Custom validation failed';
           const customError = new CustomValidationError(
-            'Custom validation failed',
+            errorMessage,
             context.response
           );
           throw customError;
@@ -41,12 +42,13 @@ export const createErrorHandlerMiddleware = (config?: ErrorHandlerConfig): Middl
       }
       
       // 转换错误
+      let transformedError = error;
       if (config?.transformError) {
-        throw config.transformError(error);
+        transformedError = config.transformError(error);
       }
       
       // 包装错误以提供更多信息
-      throw wrapError(error, context);
+      throw wrapError(transformedError, context);
     }
   },
 });

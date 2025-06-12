@@ -1,4 +1,5 @@
 import { generateRequestId } from '../utils';
+
 import type { RequestTask, RequestConfig } from '../types/service';
 
 class CanceledError extends Error {

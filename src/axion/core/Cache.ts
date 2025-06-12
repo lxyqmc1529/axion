@@ -74,13 +74,21 @@ export class MemoryLRUCache<K, V> implements LRUCache<K, V> {
   keys(): K[] {
     return Array.from(this.cache.keys());
   }
+
+  values(): V[] {
+    return Array.from(this.cache.values());
+  }
+
+  entries(): [K, V][] {
+    return Array.from(this.cache.entries());
+  }
 }
 
 export class CacheManager {
   private cache: LRUCache<string, CacheItem>;
   private config: Required<CacheConfig>;
   private stats: CacheStats;
-  private cleanupTimer?: number;
+  private cleanupTimer?: NodeJS.Timeout;
 
   constructor(config: CacheConfig = {}) {
     this.config = {
@@ -99,6 +107,7 @@ export class CacheManager {
       hitCount: 0,
       missCount: 0,
       hitRate: 0,
+      keys: [],
     };
 
     this.startCleanupTimer();
@@ -121,6 +130,7 @@ export class CacheManager {
       this.cache.delete(key);
       this.stats.missCount++;
       this.updateHitRate();
+      this.stats.size = this.cache.size;
       return null;
     }
 
@@ -163,31 +173,57 @@ export class CacheManager {
     }
 
     const regex = new RegExp(pattern);
-    const keysToDelete: string[] = [];
-
-    // 由于 LRUCache 接口没有提供遍历方法，我们需要扩展实现
-    // 这里简化处理，实际实现中可能需要更复杂的逻辑
-    this.cache.clear(); // 临时简化实现
-    this.stats.size = 0;
+    const keys = this.cache.keys();
+    for (const key of keys) {
+      if (regex.test(key)) {
+        this.cache.delete(key);
+      }
+    }
+    this.stats.size = this.cache.size;
   }
 
   getStats(): CacheStats {
-    return { ...this.stats,
+    return {
+      ...this.stats,
+      size: this.cache.size,
+      maxSize: this.config.maxSize,
       keys: this.cache.keys(),
-     };
+    };
   }
 
   updateConfig(config: Partial<CacheConfig>): void {
+    const oldConfig = { ...this.config };
     this.config = { ...this.config, ...config };
-    if (config.maxSize && config.maxSize !== this.cache.maxSize) {
-      // 重新创建缓存以应用新的大小限制
-      const oldCache = this.cache;
-      this.cache = new MemoryLRUCache<string, CacheItem>(config.maxSize);
-      // 这里可以添加迁移逻辑
+
+    // 如果缓存大小改变，需要重新创建缓存
+    if (config.maxSize && config.maxSize !== oldConfig.maxSize) {
+      const newCache = new MemoryLRUCache<string, CacheItem>(config.maxSize);
+      const entries = this.cache.entries();
+
+      // 迁移现有缓存项
+      for (const [key, item] of entries) {
+        if (Date.now() - item.timestamp <= item.ttl) {
+          newCache.set(key, item);
+        }
+      }
+
+      this.cache = newCache;
+      this.stats.maxSize = config.maxSize;
+      this.stats.size = this.cache.size;
+    }
+
+    // 如果禁用缓存，清空现有缓存
+    if (config.enabled === false) {
+      this.cache.clear();
+      this.stats.size = 0;
     }
   }
 
   private startCleanupTimer(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+    }
+
     this.cleanupTimer = setInterval(() => {
       this.cleanup();
     }, 60000); // 每分钟清理一次过期缓存
@@ -195,8 +231,13 @@ export class CacheManager {
 
   private cleanup(): void {
     const now = Date.now();
-    // 由于接口限制，这里简化实现
-    // 实际实现中需要遍历所有缓存项并删除过期的
+    const entries = this.cache.entries();
+    for (const [key, item] of entries) {
+      if (now - item.timestamp > item.ttl) {
+        this.cache.delete(key);
+      }
+    }
+    this.stats.size = this.cache.size;
   }
 
   private updateHitRate(): void {
@@ -209,5 +250,6 @@ export class CacheManager {
       clearInterval(this.cleanupTimer);
     }
     this.cache.clear();
+    this.stats.size = 0;
   }
 }

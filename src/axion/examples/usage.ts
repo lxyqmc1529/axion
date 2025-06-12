@@ -1,6 +1,6 @@
 import { createAxion, Service } from '../index';
 import type { MiddlewareFunction } from '../types/middleware';
-
+import {generateRequestId} from '../utils';
 // 1. 创建基本实例
 const axion = createAxion({
   baseURL: 'https://api.example.com',
@@ -158,7 +158,7 @@ const advancedAxion = createAxion({
     maxSize: 200,
     keyGenerator: (config) => {
       // 自定义缓存键生成
-      return `custom_${config.method}_${config.url}_${JSON.stringify(config.params)}`;
+      return generateRequestId(config);
     },
   },
   globalValidateError: (response) => {
