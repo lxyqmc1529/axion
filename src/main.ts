@@ -116,7 +116,7 @@ async function testAxion() {
           results.push(res);
           lastResponse = res;
         }
-      } catch (e) {
+      } catch (e: any) {
         // 被防抖取消的请求会抛出 CanceledError，我们忽略它
         if (e.name !== 'CanceledError') {
           throw e;

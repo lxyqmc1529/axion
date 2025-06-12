@@ -3,6 +3,10 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "files": ["dist", "typings", "package.json", "README.md"],
+  "main": "./dist/axion.umd.js",
+  "module": "./dist/axion.es.js",
+  "types": "./typings/index.d.ts",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
@@ -22,6 +26,7 @@
     "stream-browserify": "^3.0.0",
     "typescript": "~5.8.3",
     "vite": "^6.3.5",
+    "vite-plugin-dts": "^4.5.4",
     "vite-plugin-node-polyfills": "^0.23.0",
     "vue-tsc": "^2.2.8"
   }

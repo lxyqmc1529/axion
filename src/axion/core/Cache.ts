@@ -99,6 +99,7 @@ export class CacheManager {
       hitCount: 0,
       missCount: 0,
       hitRate: 0,
+      keys: []
     };
 
     this.startCleanupTimer();
