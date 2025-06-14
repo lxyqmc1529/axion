@@ -2,8 +2,6 @@ import type { MiddlewareFunction, MiddlewareContext, MiddlewareNext } from '../t
 import { AxiosError } from 'axios';
 
 export interface ErrorHandlerConfig {
-  onError?: (error: any, context: MiddlewareContext) => void;
-  transformError?: (error: any) => any;
   logErrors?: boolean;
 }
 
@@ -33,20 +31,6 @@ export const createErrorHandlerMiddleware = (config?: ErrorHandlerConfig): Middl
       if (config?.logErrors !== false) {
         logError(error, context);
       }
-      
-      // 调用错误回调
-      if (config?.onError) {
-        config.onError(error, context);
-      }
-      
-      // 转换错误
-      if (config?.transformError) {
-        const transformedError = config.transformError(error);
-        if (transformedError instanceof Error) {
-          throw transformedError;
-        }
-      }
-      
       // 包装错误以提供更多信息
       throw wrapError(error, context);
     }
@@ -124,34 +108,3 @@ function wrapError(error: any, context: MiddlewareContext): AxionError {
 function isAxiosError(error: any): error is AxiosError {
   return error && error.isAxiosError === true;
 }
-
-// 预定义的错误处理器
-export const createNetworkErrorHandler = (): MiddlewareFunction => 
-  createErrorHandlerMiddleware({
-    transformError: (error) => {
-      if (isAxiosError(error) && !error.response) {
-        return new Error('Network error - please check your connection');
-      }
-      return error;
-    },
-  });
-
-export const createTimeoutErrorHandler = (): MiddlewareFunction =>
-  createErrorHandlerMiddleware({
-    transformError: (error) => {
-      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-        return new Error('Request timeout - please try again');
-      }
-      return error;
-    },
-  });
-
-export const createServerErrorHandler = (): MiddlewareFunction =>
-  createErrorHandlerMiddleware({
-    transformError: (error) => {
-      if (isAxiosError(error) && (error.response?.status as number) >= 500) {
-        return new Error('Server error - please try again later');
-      }
-      return error;
-    },
-  });

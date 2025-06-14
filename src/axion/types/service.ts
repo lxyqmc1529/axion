@@ -24,7 +24,7 @@ export interface RequestConfig extends AxiosRequestConfig {
   requestLock?: boolean;
   
   // 自定义错误验证
-  validateError?: (response: AxiosResponse) => boolean;
+  validateError?: (response: AxiosResponse) => boolean | Error;
   
   // 请求标识符，用于防抖和请求锁
   requestId?: string;
@@ -54,18 +54,15 @@ export interface ServiceConfig {
   // 默认优先级
   defaultPriority?: number;
   
-  // 是否默认启用防抖
-  defaultDebounce?: boolean;
-  
-  // 是否默认启用请求锁
-  defaultRequestLock?: boolean;
-  
   // 全局错误验证函数
-  globalValidateError?: (response: AxiosResponse) => boolean;
+  globalValidateError?: (response: AxiosResponse) => boolean | Error;
   
   // 自定义适配器
   adapter?: AxiosAdapter | CustomAdapter;
   
+  // 是否开启调度
+  enableSchedule?: boolean;
+
   // 并发请求数限制
   maxConcurrentRequests?: number;
   
@@ -109,7 +106,7 @@ export interface ServiceInstance {
     running: number;
     maxConcurrent: number;
     maxQueueSize: number;
-  };
+  } | null;
   
   // 适配器管理
   setAdapter(adapter: AxiosAdapter | CustomAdapter): void;

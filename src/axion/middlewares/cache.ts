@@ -9,7 +9,7 @@ export const createCacheMiddleware = (cacheManager: CacheManager): MiddlewareFun
     const cacheConfig = context.config.cache;
 
     // 如果没有启用缓存，直接执行下一个中间件
-    if (!cacheConfig || (typeof cacheConfig === 'object' && !cacheConfig.enabled)) {
+    if (!cacheConfig) {
       return next();
     }
 
@@ -18,8 +18,8 @@ export const createCacheMiddleware = (cacheManager: CacheManager): MiddlewareFun
       return next();
     }
 
-    const cacheKey = generateRequestId(context.config);
-    const cachedData = await cacheManager.get(cacheKey);
+    const cacheKey = context.config.requestId || generateRequestId(context.config);
+    const cachedData = cacheManager.get(cacheKey);
     
     if (cachedData !== null) {
       context.fromCache = true;
@@ -32,7 +32,8 @@ export const createCacheMiddleware = (cacheManager: CacheManager): MiddlewareFun
     const result = await next();
 
     // 缓存成功的响应
-    const isSuccessful = context.response?.status >= 200 && context.response?.status < 300;
+    const status = context.response?.status;
+    const isSuccessful = status && status >= 200 && status < 300;
     if (isSuccessful && result !== undefined) {
       const ttl = typeof cacheConfig === 'object' ? cacheConfig.ttl : undefined;
       await cacheManager.set(cacheKey, result, ttl);
@@ -41,20 +42,4 @@ export const createCacheMiddleware = (cacheManager: CacheManager): MiddlewareFun
     return result;
   },
 });
-
-function generateCacheKey(config: any): string {
-  const { method = 'GET', url = '', params = {}, data = {} } = config;
-
-  // 如果有自定义缓存键生成器，使用它
-  if (config.cache && typeof config.cache === 'object' && config.cache.keyGenerator) {
-    const key = config.cache.keyGenerator(config);
-    console.debug('[Axion Cache] 使用自定义键生成器生成键：', key);
-    return key;
-  }
-
-  // 默认键生成逻辑
-  const key = `${method.toUpperCase()}:${url}:${JSON.stringify(params)}:${JSON.stringify(data)}`;
-  console.debug('[Axion Cache] 使用默认键生成器生成键：', key);
-  return key;
-}
 

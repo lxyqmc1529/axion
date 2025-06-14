@@ -1,8 +1,7 @@
+import { generateRequestId } from '../utils';
 import type { RequestConfig } from '../types/service';
-
 export interface PendingRequest {
   promise: Promise<any>;
-  timestamp: number;
   abortController: AbortController;
 }
 
@@ -22,14 +21,11 @@ export class RequestLockManager {
     if (!config.requestLock) {
       return null;
     }
-
-    const key = this.generateRequestKey(config);
+    const key = config.requestId || generateRequestId(config)
     const pending = this.pendingRequests.get(key);
-
     if (pending) {
       return pending.promise;
     }
-
     return null;
   }
 
@@ -37,15 +33,13 @@ export class RequestLockManager {
    * 注册新的请求
    */
   registerRequest(config: RequestConfig, promise: Promise<any>): Promise<any> {
-    const key = this.generateRequestKey(config);
+    const key = config.requestId || generateRequestId(config);
     const abortController = new AbortController();
 
     const pendingRequest: PendingRequest = {
       promise,
-      timestamp: Date.now(),
       abortController,
     };
-
     this.pendingRequests.set(key, pendingRequest);
 
     // 请求完成后清理
@@ -67,8 +61,7 @@ export class RequestLockManager {
       return executor();
     }
 
-    const key = this.generateRequestKey(config);
-
+    const key = config.requestId || generateRequestId(config);
     return new Promise((resolve, reject) => {
       // 清除之前的定时器
       const existingTimer = this.debounceMap.get(key);
@@ -86,7 +79,6 @@ export class RequestLockManager {
           reject(error);
         }
       }, this.debounceDelay);
-
       this.debounceMap.set(key, timer);
     });
   }
@@ -109,7 +101,7 @@ export class RequestLockManager {
    * 取消所有请求
    */
   cancelAllRequests(): void {
-    for (const [key, pending] of this.pendingRequests) {
+    for (const [_, pending] of this.pendingRequests) {
       pending.abortController.abort();
     }
     this.pendingRequests.clear();
@@ -119,56 +111,6 @@ export class RequestLockManager {
       clearTimeout(timer);
     }
     this.debounceMap.clear();
-  }
-
-  /**
-   * 获取待处理请求统计
-   */
-  getStats() {
-    return {
-      pendingRequests: this.pendingRequests.size,
-      debounceRequests: this.debounceMap.size,
-    };
-  }
-
-  /**
-   * 清理过期的请求
-   */
-  cleanup(maxAge: number = 30000): void {
-    const now = Date.now();
-
-    for (const [key, pending] of this.pendingRequests) {
-      if (now - pending.timestamp > maxAge) {
-        pending.abortController.abort();
-        this.pendingRequests.delete(key);
-      }
-    }
-  }
-
-  /**
-   * 生成请求唯一键
-   */
-  private generateRequestKey(config: RequestConfig): string {
-    const { method = 'GET', url = '', params = {}, data = {} } = config;
-
-    // 如果有自定义 requestId，使用它
-    if (config.requestId) {
-      return config.requestId;
-    }
-
-    // 否则根据请求参数生成
-    const key = `${method.toUpperCase()}:${url}:${JSON.stringify(params)}:${JSON.stringify(data)}`;
-    return this.base64Encode(key).replace(/[+/=]/g, '');
-  }
-
-  private base64Encode(str: string): string {
-    if (typeof btoa !== 'undefined') {
-      return btoa(str);
-    } else if (typeof (globalThis as any).Buffer !== 'undefined') {
-      return (globalThis as any).Buffer.from(str).toString('base64');
-    } else {
-      return str.replace(/./g, (char) => char.charCodeAt(0).toString(36)).replace(/\s/g, '');
-    }
   }
 
   /**

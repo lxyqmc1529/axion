@@ -95,7 +95,8 @@ export class RequestQueue {
     };
   }
 
-  updateConfig(maxConcurrent?: number, maxQueueSize?: number): void {
+  updateConfig(config: { maxConcurrent?: number, maxQueueSize?: number }): void {
+    const { maxConcurrent, maxQueueSize } = config;
     if (maxConcurrent !== undefined) {
       this.maxConcurrent = maxConcurrent;
     }
@@ -124,15 +125,8 @@ export class RequestQueue {
     await new Promise(resolve => setTimeout(resolve, 0));
     
     while (this.running.size < this.maxConcurrent && this.queue.length > 0) {
-      // 每次都从队列中选择优先级最高的请求
-      let highestPriorityIndex = 0;
-      for (let i = 1; i < this.queue.length; i++) {
-        if (this.queue[i].priority > this.queue[highestPriorityIndex].priority) {
-          highestPriorityIndex = i;
-        }
-      }
-      
-      const task = this.queue.splice(highestPriorityIndex, 1)[0];
+      // 每次都从队列中选择优先级最高的请求 -- 队首任务
+      const task = this.queue.shift()!;
       this.running.set(task.id, task);
 
       this.executeTask(task).finally(() => {
@@ -157,7 +151,7 @@ export class RequestQueue {
     throw new Error('Request executor not set');
   };
 
-  setRequestExecutor(executor: (config: RequestConfig) => Promise<any>): void {
+  setRequestExecutor<T = any>(executor: (config: RequestConfig) => Promise<T>): void {
     this.executeRequest = executor;
   }
 }

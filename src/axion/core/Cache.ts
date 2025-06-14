@@ -1,4 +1,3 @@
-import { generateRequestId } from '../utils';
 import type {
   CacheConfig,
   CacheItem,
@@ -88,16 +87,11 @@ export class CacheManager {
   private cache: LRUCache<string, CacheItem>;
   private config: Required<CacheConfig>;
   private stats: CacheStats;
-  private cleanupTimer?: NodeJS.Timeout;
 
   constructor(config: CacheConfig = {}) {
     this.config = {
       ttl: config.ttl ?? 5 * 60 * 1000, // 5分钟
       maxSize: config.maxSize ?? 100,
-      keyGenerator: config.keyGenerator ?? generateRequestId,
-      enabled: config.enabled ?? true,
-      storage: config.storage ?? 'memory',
-      customStorage: config.customStorage ?? null as any,
     };
 
     this.cache = new MemoryLRUCache<string, CacheItem>(this.config.maxSize);
@@ -109,15 +103,9 @@ export class CacheManager {
       hitRate: 0,
       keys: []
     };
-
-    this.startCleanupTimer();
   }
 
-  async get(key: string): Promise<any | null> {
-    if (!this.config.enabled) {
-      return null;
-    }
-
+  get(key: string) {
     const item = this.cache.get(key);
     if (!item) {
       this.stats.missCount++;
@@ -142,11 +130,7 @@ export class CacheManager {
     return item.data;
   }
 
-  async set(key: string, data: any, ttl?: number): Promise<void> {
-    if (!this.config.enabled) {
-      return;
-    }
-
+  set(key: string, data: any, ttl?: number) {
     const now = Date.now();
     const item: CacheItem = {
       data,
@@ -160,26 +144,14 @@ export class CacheManager {
     this.stats.size = this.cache.size;
   }
 
-  async delete(key: string): Promise<void> {
+  delete(key: string) {
     this.cache.delete(key);
     this.stats.size = this.cache.size;
   }
 
-  async clear(pattern?: string): Promise<void> {
-    if (!pattern) {
-      this.cache.clear();
-      this.stats.size = 0;
-      return;
-    }
-
-    const regex = new RegExp(pattern);
-    const keys = this.cache.keys();
-    for (const key of keys) {
-      if (regex.test(key)) {
-        this.cache.delete(key);
-      }
-    }
-    this.stats.size = this.cache.size;
+  clear() {
+    this.cache.clear();
+    this.stats.size = 0;
   }
 
   getStats(): CacheStats {
@@ -195,26 +167,10 @@ export class CacheManager {
     const oldConfig = { ...this.config };
     this.config = { ...this.config, ...config };
 
-    // 如果缓存大小改变，需要重新创建缓存
-    if (config.maxSize && config.maxSize !== oldConfig.maxSize) {
-      const newCache = new MemoryLRUCache<string, CacheItem>(config.maxSize);
-      const entries = this.cache.entries();
-
-      // 迁移现有缓存项
-      for (const [key, item] of entries) {
-        if (Date.now() - item.timestamp <= item.ttl) {
-          newCache.set(key, item);
-        }
-      }
-
-      this.cache = newCache;
-      this.stats.maxSize = config.maxSize;
-      this.stats.size = this.cache.size;
-    }
-
+    this.cache.maxSize = config.maxSize || oldConfig.maxSize;
     // 如果 TTL 改变，更新所有现有缓存项的 TTL
     if (config.ttl && config.ttl !== oldConfig.ttl) {
-      const entries = this.cache.entries();
+      const entries = this.cache.entries()
       for (const [key, item] of entries) {
         const remainingTime = item.ttl - (Date.now() - item.timestamp);
         if (remainingTime > 0) {
@@ -226,45 +182,10 @@ export class CacheManager {
       }
       this.stats.size = this.cache.size;
     }
-
-    // 如果禁用缓存，清空现有缓存
-    if (config.enabled === false) {
-      this.cache.clear();
-      this.stats.size = 0;
-    }
-  }
-
-  private startCleanupTimer(): void {
-    if (this.cleanupTimer) {
-      clearInterval(this.cleanupTimer);
-    }
-
-    this.cleanupTimer = setInterval(() => {
-      this.cleanup();
-    }, 60000); // 每分钟清理一次过期缓存
-  }
-
-  private cleanup(): void {
-    const now = Date.now();
-    const entries = this.cache.entries();
-    for (const [key, item] of entries) {
-      if (now - item.timestamp > item.ttl) {
-        this.cache.delete(key);
-      }
-    }
-    this.stats.size = this.cache.size;
   }
 
   private updateHitRate(): void {
     const total = this.stats.hitCount + this.stats.missCount;
     this.stats.hitRate = total > 0 ? this.stats.hitCount / total : 0;
-  }
-
-  destroy(): void {
-    if (this.cleanupTimer) {
-      clearInterval(this.cleanupTimer);
-    }
-    this.cache.clear();
-    this.stats.size = 0;
   }
 }

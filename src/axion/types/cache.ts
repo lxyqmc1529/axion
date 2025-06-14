@@ -1,21 +1,8 @@
 export interface CacheConfig {
   // 缓存时间 (毫秒)
   ttl?: number;
-  
   // 最大缓存数量
   maxSize?: number;
-  
-  // 缓存键生成函数
-  keyGenerator?: (config: any) => string;
-  
-  // 是否启用缓存
-  enabled?: boolean;
-  
-  // 缓存存储类型
-  storage?: 'memory' | 'localStorage' | 'sessionStorage' | 'custom';
-  
-  // 自定义存储实现
-  customStorage?: CacheStorage;
 }
 
 export interface CacheStorage {
@@ -52,4 +39,5 @@ export interface LRUCache<K, V> {
   size: number;
   maxSize: number;
   keys(): K[];
+  entries(): [K, V][];
 }

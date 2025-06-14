@@ -4,18 +4,18 @@ import type { MiddlewareFunction, MiddlewareContext } from '../types/middleware'
 import type { CustomAdapter } from '../types/adapter';
 import { CacheManager } from './Cache';
 import { RequestQueue } from './RequestQueue';
-import { MiddlewareEngine, createRetryMiddleware, createErrorHandlerMiddleware, createTimingMiddleware } from './Middleware';
+import { MiddlewareEngine, createTimingMiddleware } from './Middleware';
 import { RequestLockManager } from './RequestLock';
 import { createCacheMiddleware } from '../middlewares/cache';
-import { createRetryMiddleware as createAdvancedRetryMiddleware } from '../middlewares/retry';
-import { createErrorHandlerMiddleware as createAdvancedErrorHandlerMiddleware } from '../middlewares/errorHandler';
+import { createRetryMiddleware } from '../middlewares/retry';
+import { createErrorHandlerMiddleware } from '../middlewares/errorHandler';
 import { generateRequestId } from '../utils';
 
 export class Service implements ServiceInstance {
   private axiosInstance: AxiosInstance;
   private config: Required<ServiceConfig>;
   private cacheManager: CacheManager;
-  private requestQueue: RequestQueue;
+  private requestQueue?: RequestQueue;
   private middlewareEngine: MiddlewareEngine;
   private requestLockManager: RequestLockManager;
 
@@ -32,17 +32,19 @@ export class Service implements ServiceInstance {
 
     // 初始化各个管理器
     this.cacheManager = new CacheManager(this.config.defaultCache);
-    this.requestQueue = new RequestQueue(
-      this.config.maxConcurrentRequests,
-      this.config.maxQueueSize
-    );
+    
     this.middlewareEngine = new MiddlewareEngine();
     this.requestLockManager = new RequestLockManager();
+    if (config.enableSchedule) {
+      this.requestQueue = new RequestQueue(
+        this.config.maxConcurrentRequests,
+        this.config.maxQueueSize
+      );
+      this.requestQueue.setRequestExecutor(this.executeRequest.bind(this));
+    }
 
     // 设置请求执行器
-    this.requestQueue.setRequestExecutor(this.executeRequest.bind(this));
     this.middlewareEngine.setRequestExecutor(this.executeAxiosRequest.bind(this));
-
     this.setupDefaultMiddlewares();
   }
 
@@ -57,9 +59,7 @@ export class Service implements ServiceInstance {
           return duplicatePromise;
       }
       // 先注册一个新的 Promise
-      return this.requestLockManager.registerRequest(mergedConfig, new Promise((resolve, reject) => {
-        this.processRequest(mergedConfig).then(resolve).catch(reject);
-      }));
+      return this.requestLockManager.registerRequest(mergedConfig, this.processRequest(mergedConfig));
     }
 
     // 防抖处理
@@ -110,8 +110,8 @@ export class Service implements ServiceInstance {
   }
 
   // 缓存管理
-  clearCache(pattern?: string): void {
-    this.cacheManager.clear(pattern);
+  clearCache(): void {
+    this.cacheManager.clear();
   }
 
   getCacheStats() {
@@ -123,7 +123,7 @@ export class Service implements ServiceInstance {
 
   cancelRequest(requestId: string): void {
     // Cancel queue position
-    this.requestQueue.cancel(requestId);
+    this.requestQueue?.cancel(requestId);
     
     // Cancel active request
     const controller = this.abortControllers.get(requestId);
@@ -137,16 +137,20 @@ export class Service implements ServiceInstance {
   }
 
   cancelAllRequests(): void {
-    this.requestQueue.cancelAll();
+    this.requestQueue?.cancelAll();
     this.requestLockManager.cancelAllRequests();
+    const entries = this.abortControllers.entries();
+    for (const [_, controller] of entries) {
+      controller.abort();
+    }
   }
 
   getQueueStats() {
-    return this.requestQueue.getStats();
+    return this.requestQueue?.getStats() ?? null;
   }
 
-  updateQueueConfig(maxConcurrent?: number, maxQueueSize?: number): void {
-    this.requestQueue.updateConfig(maxConcurrent, maxQueueSize);
+  updateQueueConfig(options: { maxConcurrent?: number, maxQueueSize?: number }): void {
+    this.requestQueue?.updateConfig(options);
   }
 
   // 适配器管理
@@ -155,18 +159,12 @@ export class Service implements ServiceInstance {
   }
 
   private async processRequest<T>(config: RequestConfig): Promise<T> {
-    // 检查缓存
-    if (config.cache) {
-      const cacheKey = generateRequestId(config);
-      const cachedData = await this.cacheManager.get(cacheKey);
-      if (cachedData) {
-        return cachedData;
-      }
+    if (this.requestQueue) {
+      // 使用请求队列处理
+      return this.requestQueue.add(config);
     }
-
-    // 使用请求队列处理
-    return this.requestQueue.add(config);
-}
+    return this.executeRequest(config);
+  }
 
   private async executeRequest(config: RequestConfig): Promise<any> {
     const context: MiddlewareContext = {
@@ -192,23 +190,8 @@ export class Service implements ServiceInstance {
       this.abortControllers.delete(requestId);
       context.response = response;
 
-      // 缓存响应
-      if (context.config.cache && response.status >= 200 && response.status < 300) {
-        const cacheKey = generateRequestId(context.config);
-        const ttl = typeof context.config.cache === 'object' ? context.config.cache.ttl : undefined;
-        await this.cacheManager.set(cacheKey, response.data, ttl);
-      }
-
       return response.data;
     } catch (error) {
-      // Convert AbortError to CanceledError
-      if (axios.isCancel(error)) {
-        const canceledError = new Error(`Request ${requestId} was canceled`);
-        canceledError.name = 'CanceledError';
-        context.error = canceledError;
-        throw canceledError;
-      }
-      
       context.error = error;
       throw error;
     } finally {
@@ -223,26 +206,23 @@ export class Service implements ServiceInstance {
       timeout: config.timeout || 10000,
       headers: config.headers || {},
       defaultRetry: config.defaultRetry || { times: 0 },
-      defaultCache: config.defaultCache || { enabled: false },
+      defaultCache: config.defaultCache || {},
       defaultPriority: config.defaultPriority || 5,
-      defaultDebounce: config.defaultDebounce || false,
-      defaultRequestLock: config.defaultRequestLock || false,
       globalValidateError: config.globalValidateError || (() => false),
       adapter: (config.adapter as AxiosAdapter) || axios.defaults.adapter!,
+      enableSchedule: config.enableSchedule || false,
       maxConcurrentRequests: config.maxConcurrentRequests || 6,
       maxQueueSize: config.maxQueueSize || 100,
     };
   }
 
-  private mergeRequestConfig(config: RequestConfig): RequestConfig & { requestId?: string } {
+  private mergeRequestConfig(config: RequestConfig): RequestConfig & { requestId: string } {
     return {
       ...config,
-      requestId: config.requestId,  // 只使用用户提供的 requestId
+      requestId: config.requestId || generateRequestId(config),
       retry: config.retry || this.config.defaultRetry,
       cache: config.cache !== undefined ? config.cache : this.config.defaultCache,
       priority: config.priority || this.config.defaultPriority,
-      debounce: config.debounce !== undefined ? config.debounce : this.config.defaultDebounce,
-      requestLock: config.requestLock !== undefined ? config.requestLock : this.config.defaultRequestLock,
       validateError: config.validateError || this.config.globalValidateError,
     };
   }
@@ -251,8 +231,8 @@ export class Service implements ServiceInstance {
     // 添加默认中间件（按执行顺序）
     this.use(createTimingMiddleware());
     this.use(createCacheMiddleware(this.cacheManager));
-    this.use(createAdvancedRetryMiddleware());
-    this.use(createAdvancedErrorHandlerMiddleware({
+    this.use(createRetryMiddleware());
+    this.use(createErrorHandlerMiddleware({
       logErrors: true,
     }));
   }
