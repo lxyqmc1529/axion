@@ -1,72 +1,55 @@
-import type { MiddlewareFunction, MiddlewareContext, MiddlewareNext } from '../types/middleware';
-
-export interface RetryConfig {
-  times: number;
-  delay?: number;
-  backoff?: 'linear' | 'exponential';
-  condition?: (error: any) => boolean;
-  onRetry?: (error: any, retryCount: number) => void;
-}
+import type {
+  MiddlewareFunction,
+  MiddlewareContext,
+  MiddlewareNext,
+  RetryConfig,
+} from '../types';
 
 export const createRetryMiddleware = (defaultConfig?: Partial<RetryConfig>): MiddlewareFunction => ({
   name: 'retry',
   priority: 90,
   handler: async (context: MiddlewareContext, next: MiddlewareNext) => {
     const retryConfig = context.config.retry;
+    // 检查重试参数
     if (!retryConfig || retryConfig.times <= 0) {
       return next();
     }
-    
-    const config: RetryConfig = {
+    // 组装重试参数
+    const config: Required<RetryConfig> = {
       times: retryConfig.times,
       delay: retryConfig.delay ?? defaultConfig?.delay ?? 1000,
       backoff: retryConfig.backoff ?? defaultConfig?.backoff ?? 'exponential',
       condition: retryConfig.condition ?? defaultConfig?.condition ?? isRetryableError,
-      onRetry: retryConfig.onRetry ?? defaultConfig?.onRetry,
+      onRetry: retryConfig.onRetry ?? defaultConfig?.onRetry as any,
     };
     
     let lastError: any;
     
-    // 初始尝试
-    try {
-      context.retryCount = 0;
-      return await next();
-    } catch (error) {
-      lastError = error;
-      if (!config.condition(error)) {
-        throw error;
-      }
-    }
-    
-    // 重试逻辑
-    for (let attempt = 1; attempt <= config.times; attempt++) {
+    const retryAttempt = async (attempt: number): Promise<any> => {
       try {
-        // 计算延迟时间并等待
-        const delay = calculateDelay(config.delay, attempt - 1, config.backoff);
-        if (delay > 0) {
-          await sleep(delay);
+        // 首次尝试不等待
+        if (attempt > 0) {
+          // 根据重试次数和延时，以及延时曲线计算重试等待时间
+          const delay = calculateDelay(config.delay, attempt - 1, config.backoff);
+          if (delay > 0) {
+            await sleep(delay);
+          }
+          config.onRetry?.(lastError, attempt);
         }
-
-        // 调用重试回调
-        if (config.onRetry) {
-          config.onRetry(lastError, attempt);
-        }
-
+        
         context.retryCount = attempt;
         return await next();
       } catch (error) {
         lastError = error;
-        if (!config.condition(error)) {
+        // 判断是否继续执行重试: 需要通过自定义的condition判断逻辑，且重试次数小于指定次数
+        if (!config.condition(error) || attempt >= config.times) {
           throw error;
         }
-        // 如果是最后一次重试且失败，抛出错误
-        if (attempt === config.times) {
-          throw error;
-        }
+        return retryAttempt(attempt + 1);
       }
-    }
-    
-    throw lastError;
+    };
+
+    return retryAttempt(0);
   },
 });
 

@@ -9,7 +9,6 @@ import { createAxion } from './axion'
 const axion = createAxion({
   baseURL: 'https://jsonplaceholder.typicode.com',
   defaultCache: {
-    enabled: true,
     ttl: 30000,
   },
   defaultRetry: {
@@ -161,11 +160,11 @@ async function testAxion() {
     const executionOrder: string[] = [];
     
     // 获取当前配置
-    const stats = axion.getQueueStats();
+    const stats = axion.getQueueStats()!;
     const { maxConcurrent } = stats;
     
     // 通过 Service 类提供的方法更新配置
-    axion.updateQueueConfig(0);
+    axion.updateQueueConfig({ maxConcurrent: 0 });
     
     // 发起请求，此时请求会进入队列而不会立即执行
     const low = axion.get('/posts/6', { priority: 1 })
@@ -176,7 +175,7 @@ async function testAxion() {
      .then(() => executionOrder.push('middle'));
     
     // 恢复原配置
-    axion.updateQueueConfig(maxConcurrent);
+    axion.updateQueueConfig({ maxConcurrent });
     
     await Promise.all([low, high,middle]);
     
@@ -190,9 +189,9 @@ async function testAxion() {
   // 9. 取消所有请求测试 TODO
   await runTestCase('Cancel all requests', async () => {
     // 先降低并发数，确保请求会进入队列
-    const stats = axion.getQueueStats();
+    const stats = axion.getQueueStats()!;
     const originalMaxConcurrent = stats.maxConcurrent;
-    axion.updateQueueConfig(1);
+    axion.updateQueueConfig({ maxConcurrent: 1 });
 
     const requests = [
       axion.get('/posts/8'),
@@ -224,7 +223,7 @@ async function testAxion() {
       }
     } finally {
       // 恢复原始并发数
-      axion.updateQueueConfig(originalMaxConcurrent);
+      axion.updateQueueConfig({ maxConcurrent: originalMaxConcurrent });
     }
   });
 
@@ -299,29 +298,11 @@ async function testAxion() {
     
     // 第一次请求，应该未命中缓存
     console.log('发起第一次请求（应该未命中缓存）...');
-    await axion.get('/posts/14', {
-      cache: {
-        enabled: true,
-        keyGenerator: (config) => {
-          console.log('使用自定义键生成器，生成键：', customKey);
-          console.log('请求配置：', {
-            url: config.url,
-            method: config.method,
-            params: config.params
-          });
-          return customKey;
-        }
-      }
-    });
+    await axion.get('/posts/14', {});
     
     // 第二次请求，应该命中缓存
     console.log('\n发起第二次相同请求（应该命中缓存）...');
-    await axion.get('/posts/14', {
-      cache: {
-        enabled: true,
-        keyGenerator: () => customKey
-      }
-    });
+    await axion.get('/posts/14', {});
     
     console.log('\n获取缓存统计信息...');
     const stats = axion.getCacheStats();
@@ -345,12 +326,7 @@ async function testAxion() {
     // 使用不同的键再次请求
     const anotherKey = 'another-key';
     console.log('\n使用不同的键发起请求...');
-    await axion.get('/posts/14', {
-      cache: {
-        enabled: true,
-        keyGenerator: () => anotherKey
-      }
-    });
+    await axion.get('/posts/14', {});
     
     const statsAfterNewKey = axion.getCacheStats();
     console.log('新请求后的缓存统计：', {

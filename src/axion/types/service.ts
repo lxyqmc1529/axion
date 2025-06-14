@@ -2,14 +2,11 @@ import type { AxiosRequestConfig, AxiosResponse, AxiosAdapter } from 'axios';
 import type { CacheConfig } from './cache';
 import type { MiddlewareFunction } from './middleware';
 import type { CustomAdapter } from './adapter';
+import type { RetryConfig } from './retry';
 
 export interface RequestConfig extends AxiosRequestConfig {
   // 重试配置
-  retry?: {
-    times: number;
-    delay?: number;
-    condition?: (error: any) => boolean;
-  };
+  retry?: RetryConfig;
   
   // 缓存配置
   cache?: CacheConfig | boolean;
@@ -42,11 +39,7 @@ export interface ServiceConfig {
   headers?: Record<string, string>;
   
   // 默认重试配置
-  defaultRetry?: {
-    times: number;
-    delay?: number;
-    condition?: (error: any) => boolean;
-  };
+  defaultRetry?: RetryConfig;
   
   // 默认缓存配置
   defaultCache?: CacheConfig;
