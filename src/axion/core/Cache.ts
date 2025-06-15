@@ -106,6 +106,10 @@ export class CacheManager {
   }
 
   get(key: string) {
+    // 检查缓存是否启用
+  if (this.config.enabled === false) {
+    return null;
+  }
     const item = this.cache.get(key);
     if (!item) {
       this.stats.missCount++;
@@ -131,6 +135,10 @@ export class CacheManager {
   }
 
   set(key: string, data: any, ttl?: number) {
+    // 检查缓存是否启用
+    if (this.config.enabled === false) {
+      return;
+    }
     const now = Date.now();
     const item: CacheItem = {
       data,
