@@ -17,7 +17,10 @@
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:coverage-force": "vitest run --coverage --reporter=verbose --run || true",
+    "test:coverage-continue": "vitest run --coverage --passWithNoTests --reporter=verbose"
   },
   "dependencies": {
     "axios": "^1.9.0",
@@ -26,6 +29,7 @@
   "devDependencies": {
     "@types/node": "^22.15.21",
     "@vitejs/plugin-vue": "^5.2.3",
+    "@vitest/coverage-v8": "^1.6.1",
     "@vue/tsconfig": "^0.7.0",
     "buffer": "^6.0.3",
     "crypto-browserify": "^3.12.1",
