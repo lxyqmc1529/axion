@@ -184,6 +184,10 @@ export class CacheManager {
     }
   }
 
+  destroy(): void {
+    this.clear();
+  }
+
   private updateHitRate(): void {
     const total = this.stats.hitCount + this.stats.missCount;
     this.stats.hitRate = total > 0 ? this.stats.hitCount / total : 0;

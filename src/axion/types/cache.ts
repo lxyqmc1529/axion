@@ -1,8 +1,12 @@
 export interface CacheConfig {
+  // 是否启用缓存
+  enabled?: boolean;
   // 缓存时间 (毫秒)
   ttl?: number;
   // 最大缓存数量
   maxSize?: number;
+  // 自定义缓存键生成器
+  keyGenerator?: (config: any) => string;
 }
 
 export interface CacheStorage {

@@ -3,6 +3,8 @@ import { AxiosError } from 'axios';
 
 export interface ErrorHandlerConfig {
   logErrors?: boolean;
+  onError?: (error: any, context: MiddlewareContext) => void;
+  transformError?: (error: any, context: MiddlewareContext) => any;
 }
 
 export const createErrorHandlerMiddleware = (config?: ErrorHandlerConfig): MiddlewareFunction => ({
@@ -31,8 +33,17 @@ export const createErrorHandlerMiddleware = (config?: ErrorHandlerConfig): Middl
       if (config?.logErrors !== false) {
         logError(error, context);
       }
+      
+      // 调用错误回调
+      if (config?.onError) {
+        config.onError(error, context);
+      }
+      
+      // 转换错误
+      const finalError = config?.transformError ? config.transformError(error, context) : error;
+      
       // 包装错误以提供更多信息
-      throw wrapError(error, context);
+      throw finalError instanceof Error ? finalError : wrapError(finalError, context);
     }
   },
 });
@@ -108,3 +119,49 @@ function wrapError(error: any, context: MiddlewareContext): AxionError {
 function isAxiosError(error: any): error is AxiosError {
   return error && error.isAxiosError === true;
 }
+
+// 预定义错误处理器
+export const createNetworkErrorHandler = (): MiddlewareFunction => ({
+  name: 'networkErrorHandler',
+  priority: 90,
+  handler: async (context: MiddlewareContext, next: MiddlewareNext) => {
+    try {
+      return await next();
+    } catch (error) {
+      if (isAxiosError(error) && (error.code === 'ENETWORK' || error.code === 'ENOTFOUND')) {
+        throw new AxionError('Network error - please check your connection', context, error);
+      }
+      throw error;
+    }
+  },
+});
+
+export const createTimeoutErrorHandler = (): MiddlewareFunction => ({
+  name: 'timeoutErrorHandler',
+  priority: 90,
+  handler: async (context: MiddlewareContext, next: MiddlewareNext) => {
+    try {
+      return await next();
+    } catch (error) {
+      if (isAxiosError(error) && error.code === 'ECONNABORTED') {
+        throw new AxionError('Request timeout - please try again', context, error);
+      }
+      throw error;
+    }
+  },
+});
+
+export const createServerErrorHandler = (): MiddlewareFunction => ({
+  name: 'serverErrorHandler',
+  priority: 90,
+  handler: async (context: MiddlewareContext, next: MiddlewareNext) => {
+    try {
+      return await next();
+    } catch (error) {
+      if (isAxiosError(error) && error.response?.status && error.response.status >= 500) {
+        throw new AxionError('Server error - please try again later', context, error);
+      }
+      throw error;
+    }
+  },
+});

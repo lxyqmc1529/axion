@@ -106,7 +106,7 @@ describe('RequestQueue', () => {
 
   describe('updateConfig方法', () => {
     it('应该正确更新配置', () => {
-      queue.updateConfig(10, 200)
+      queue.updateConfig({ maxConcurrent: 10, maxQueueSize: 200 })
       const stats = queue.getStats()
       expect(stats.maxConcurrent).toBe(10)
       expect(stats.maxQueueSize).toBe(200)
@@ -114,7 +114,7 @@ describe('RequestQueue', () => {
 
     it('应该只更新提供的配置项', () => {
       const originalStats = queue.getStats()
-      queue.updateConfig(undefined, 200)
+      queue.updateConfig({ maxQueueSize: 200 })
       const newStats = queue.getStats()
       
       expect(newStats.maxConcurrent).toBe(originalStats.maxConcurrent)

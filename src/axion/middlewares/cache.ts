@@ -9,7 +9,7 @@ export const createCacheMiddleware = (cacheManager: CacheManager): MiddlewareFun
     const cacheConfig = context.config.cache;
 
     // 如果没有启用缓存，直接执行下一个中间件
-    if (!cacheConfig) {
+    if (!cacheConfig || (typeof cacheConfig === 'object' && !cacheConfig.enabled)) {
       return next();
     }
 
@@ -18,7 +18,17 @@ export const createCacheMiddleware = (cacheManager: CacheManager): MiddlewareFun
       return next();
     }
 
-    const cacheKey = context.config.requestId || generateRequestId(context.config);
+    // 生成缓存键
+    let cacheKey: string;
+    if (typeof cacheConfig === 'object' && cacheConfig.keyGenerator) {
+      cacheKey = cacheConfig.keyGenerator(context.config);
+      console.debug('[Axion Cache] 使用自定义键生成器生成键：', cacheKey);
+    } else {
+      // 使用简单的键格式用于测试兼容性
+      const { method = 'GET', url = '', params = {}, data = {} } = context.config;
+      cacheKey = `${method.toUpperCase()}:${url}:${JSON.stringify(params)}:${JSON.stringify(data)}`;
+    }
+    
     const cachedData = cacheManager.get(cacheKey);
     
     if (cachedData !== null) {
